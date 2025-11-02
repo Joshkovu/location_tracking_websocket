@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Driver Simulator</title>
+    <style>
+        body {
+            font-family: Arial;
+            padding: 20px;
+            background: #1a1a2e;
+            color: white;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        button {
+            padding: 15px 30px;
+            margin: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+        }
+
+        button:hover {
+            background: #5568d3;
+        }
+
+        .log {
+            background: #000;
+            color: #0f0;
+            padding: 15px;
+            margin: 20px 0;
+            height: 400px;
+            overflow-y: auto;
+            font-family: monospace;
+        }
+
+        input {
+            padding: 10px;
+            width: 100%;
+            margin: 5px 0;
+            font-size: 14px;
+        }
+
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        .connected {
+            background: #28a745;
+        }
+
+        .disconnected {
+            background: #dc3545;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>🚗 Driver Location Simulator</h1>
+
+        <div id="status" class="status disconnected">Disconnected</div>
+
+        <div>
+            <input type="text" id="driverId" placeholder="Driver ID" value="DRV001">
+            <input type="text" id="deliveryId" placeholder="Delivery ID" value="DEL001">
+        </div>
+
+        <button onclick="connect()">Connect</button>
+        <button onclick="sendLocation()">Send Location (Kampala)</button>
+        <button onclick="startAutoSend()">Auto Send (every 3s)</button>
+        <button onclick="stopAutoSend()">Stop Auto Send</button>
+
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let autoSendInterval = null;
+        let locationIndex = 0;
+
+        // Route from Kampala City to Nakawa
+        const route = [
+            { lat: 0.3136, lon: 32.5811, name: "City Square" },
+            { lat: 0.3156, lon: 32.5861, name: "Kitante" },
+            { lat: 0.3176, lon: 32.5911, name: "Kololo" },
+            { lat: 0.3196, lon: 32.5961, name: "Naguru" },
+            { lat: 0.3216, lon: 32.6011, name: "Bukoto" },
+            { lat: 0.3236, lon: 32.6061, name: "Ntinda" },
+            { lat: 0.3256, lon: 32.6111, name: "Kiwatule" },
+            { lat: 0.3276, lon: 32.6141, name: "Kyambogo" },
+            { lat: 0.3287, lon: 32.6155, name: "Near Nakawa" },
+            { lat: 0.3297, lon: 32.6170, name: "Nakawa (Destination)" }
+        ];
+
+        function log(msg, color = '#0f0') {
+            const logDiv = document.getElementById('log');
+            const time = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `<div style="color: ${color}">[${time}] ${msg}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function connect() {
+            const driverId = document.getElementById('driverId').value;
+            const deliveryId = document.getElementById('deliveryId').value;
+
+            const wsUrl = `ws://localhost:8080/ws?user_id=${driverId}&user_type=driver&delivery_id=${deliveryId}`;
+
+            log(`Connecting to: ${wsUrl}`);
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                log('✅ Connected!', '#0f0');
+                document.getElementById('status').className = 'status connected';
+                document.getElementById('status').textContent = 'Connected';
+            };
+
+            ws.onmessage = (event) => {
+                log(`📥 Received: ${event.data}`, '#ff0');
+            };
+
+            ws.onerror = (error) => {
+                log(`❌ Error: ${error}`, '#f00');
+            };
+
+            ws.onclose = () => {
+                log('🔌 Disconnected', '#f00');
+                document.getElementById('status').className = 'status disconnected';
+                document.getElementById('status').textContent = 'Disconnected';
+            };
+        }
+
+        function sendLocation() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('❌ Not connected!', '#f00');
+                return;
+            }
+
+            const driverId = document.getElementById('driverId').value;
+            const deliveryId = document.getElementById('deliveryId').value;
+
+            const currentLoc = route[locationIndex % route.length];
+            locationIndex++;
+
+            const message = {
+                type: "location_update",
+                timestamp: new Date().toISOString(),
+                data: {
+                    driver_id: driverId,
+                    delivery_id: deliveryId,
+                    location: {
+                        lat: currentLoc.lat,
+                        lon: currentLoc.lon,
+                        altitude: 1200,
+                        speed: 35 + Math.random() * 10,
+                        bearing: 45,
+                        accuracy: 5 + Math.random() * 5,
+                        timestamp: new Date().toISOString()
+                    }
+                }
+            };
+
+            ws.send(JSON.stringify(message));
+            log(`📤 Sent: ${currentLoc.name} (${currentLoc.lat.toFixed(4)}, ${currentLoc.lon.toFixed(4)})`, '#00f');
+        }
+
+        function startAutoSend() {
+            if (autoSendInterval) {
+                log('Already auto-sending', '#ff0');
+                return;
+            }
+
+            log('🔄 Auto-send started', '#0ff');
+            autoSendInterval = setInterval(() => {
+                sendLocation();
+            }, 3000);
+        }
+
+        function stopAutoSend() {
+            if (autoSendInterval) {
+                clearInterval(autoSendInterval);
+                autoSendInterval = null;
+                log('⏸️  Auto-send stopped', '#0ff');
+            }
+        }
+    </script>
+</body>
+
+</html>
+```
+
+Now open: `http://localhost:8080/driver_test.html`
+
+### Step 5: What You Should See
+
+**In Customer Page (`index.html`):**
+- ✅ Green dot showing "Connected"
+- ✅ Driver marker appears on map
+- ✅ "Live Updates" section shows location updates
+- ✅ ETA updates
+- ✅ Speed shows in "Driver Information"
+
+**In Browser Console (F12):**
+```
+WebSocket connected
+Received message: {type: "location_update", timestamp: "...", data: {...}}
+Received message: {type: "eta_update", ...}
